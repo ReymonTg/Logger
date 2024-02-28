@@ -1,0 +1,39 @@
+{
+    "name": "reymon/logger",
+    "description": "Async send your logs to files, sockets, inboxes, databases and various web services",
+    "keywords": [
+        "async",
+        "logger",
+        "log",
+        "logging",
+        "psr-3"
+    ],
+    "type": "library",
+    "license": "MIT",
+    "authors": [
+        {
+            "name": "Mahdi",
+            "email": "mahdi.talaee1379@gmail.com"
+        },
+        {
+            "name": "AmirHossein Jafari",
+            "email": "amirhosseinjafari8228@gmail.com"
+        }
+    ],
+    "autoload": {
+        "psr-4": {
+            "Reymon\\Logger\\": "./src"
+        }
+    },
+    "require": {
+        "php-64bit": ">=8.1",
+        "ext-mbstring": "*"
+    },
+    "scripts": {
+        "build": [
+            "@cs-fix"
+        ],
+        "cs-fix": "PHP_CS_FIXER_IGNORE_ENV=1 php -d pcre.jit=0 vendor/bin/php-cs-fixer fix -v"
+    },
+    "minimum-stability": "stable"
+}
