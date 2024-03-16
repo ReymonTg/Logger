@@ -27,7 +27,8 @@
     },
     "require": {
         "php-64bit": ">=8.1",
-        "ext-mbstring": "*"
+        "ext-mbstring": "*",
+        "psr/log": "^3"
     },
     "scripts": {
         "build": [
