@@ -8,7 +8,7 @@
  * If not, see <http://www.gnu.org/licenses/>.
  *
  * @author    AhJ <AmirHosseinJafari8228@gmail.com>
- * @copyright 2023-2023 AhJ <AmirHosseinJafari8228@gmail.com>
+ * @copyright 2023-2024 AhJ <AmirHosseinJafari8228@gmail.com>
  * @license   https://choosealicense.com/licenses/gpl-3.0/ GPLv3
  */
 
