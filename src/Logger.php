@@ -14,39 +14,70 @@
 
 namespace Reymon\Logger;
 
-use DateTime;
+use Reymon\Logger\Formatter\ReymonFormatter;
 use Throwable;
 use DateTimeZone;
-use Reymon\Magic;
+use DateTimeImmutable;
 use Amp\File\File;
-use Reymon\Shutdown;
-use Psr\Log\LogLevel;
-use Revolt\EventLoop;
-use Reymon\Exception;
-use Amp\Log\StreamHandler;
-use Psr\Log\AbstractLogger;
-use function Amp\File\exists;
-
-use function Amp\File\getSize;
-use function Amp\File\openFile;
 use Amp\ByteStream\WritableStream;
-use Reymon\Settings\Logger\LogType;
+use Exception;
+use Psr\Log\AbstractLogger;
+use Psr\Log\LoggerInterface;
 
-use function Amp\ByteStream\getStderr;
-use function Amp\ByteStream\getStdout;
-use Amp\ByteStream\WritableResourceStream;
-use Reymon\Settings\Logger as SettingsLogger;
-
-class Logger extends AbstractLogger
+class Logger implements LoggerInterface
 {
-    private string $loggerLoop = '';
-    private DateTimeZone $timezone;
-    private WritableStream|File $stream;
+    use LoggerTrait;
 
-    public function __construct(SettingsLogger $logSetting, ?DateTimeZone $timezone = null)
+    protected DateTimeZone $timezone;
+
+    public function __construct(protected WritableStream $stream, ?DateTimeZone $timezone = null, protected Formatter $formatter = new ReymonFormatter())
     {
-        $this->setTimezone($timezone ?? new DateTimeZone(date_default_timezone_get()));
-        $this->setLogStream($logSetting);
+        $this->setTimezone($timezone);
+        // Setup error reporting
+        \set_error_handler($this->exceptionErrorHandler(...));
+        \set_exception_handler($this->exceptionHandler(...));
+        if (PHP_SAPI !== 'cli' && PHP_SAPI !== 'phpdbg') {
+            try {
+                \error_reporting(E_ALL);
+                \ini_set('log_errors', 1);
+                \ini_set('error_log', $this->stream instanceof File
+                    ? $this->stream->getPath()
+                    : $this->getCwd() . DIRECTORY_SEPARATOR . 'Reymon.log'
+                );
+            } catch (Throwable $e) {
+                error_log("Could not enable PHP logging $e");
+            }
+        }
+
+        try {
+            \ini_set('memory_limit', -1);
+        } catch (Throwable $e) {}
+
+        try {
+            if (\function_exists('set_time_limit')) {
+                \set_time_limit(-1);
+            }
+        } catch (Throwable $e) {}
+    }
+
+    private function getCwd(): string
+    {
+        try {
+            return getcwd();
+        } catch (Throwable $e) {
+            $backtrace = debug_backtrace(0);
+            return \dirname(end($backtrace)['file']);
+        }
+    }
+    public function setFormatter(Formatter $formatter): self
+    {
+        $this->formatter = $formatter;
+        return $this;
+    }
+
+    public function getFormatter(): Formatter
+    {
+        return $this->formatter;
     }
 
     /**
@@ -60,11 +91,9 @@ class Logger extends AbstractLogger
      */
     public function log($level, string|\Stringable $message, array $context = []): void
     {
-        // if ($this->mode === self::CALLABLE_LOGGER) {
-        //     EventLoop::queue($this->optional, $param, $level);
-        //     return;
-        // }
-        if ($message instanceof Throwable) {
+        // Assert::isInstanceOf($level, LogLevel::class);
+
+        if ($message instanceof Exception) {
             $message = (string) $message;
         } elseif (!\is_string($message)) {
             $message = json_encode($message, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR);
@@ -72,8 +101,9 @@ class Logger extends AbstractLogger
         if (empty($file)) {
             $file = basename(debug_backtrace(DEBUG_BACKTRACE_IGNORE_ARGS, 1)[0]['file'], '.php');
         }
-        $param = str_pad($file . ': ', 16) . "\t" . $message . PHP_EOL;
-        $this->stream->write($param);
+        $record = new Record($this->timezone, $level, $message . PHP_EOL, $context);
+        $format = $this->formatter->format($record);
+        $this->stream->write($format);
     }
 
     /**
@@ -113,9 +143,9 @@ class Logger extends AbstractLogger
      *
      * @return $this
      */
-    public function setTimezone(DateTimeZone $tz): self
+    public function setTimezone(?DateTimeZone $tz = null): self
     {
-        $this->timezone = $tz;
+        $this->timezone = $tz ?? new DateTimeZone(date_default_timezone_get());
         return $this;
     }
 
@@ -127,83 +157,8 @@ class Logger extends AbstractLogger
         return $this->timezone;
     }
 
-    private function setLogStream(SettingsLogger $logSetting)
-    {
-        $path = $logSetting->getPath() ?? Magic::getcwd() . DIRECTORY_SEPARATOR . '/Reymon.log';
-        $type = $logSetting->getType();
-        $max  = $logSetting->getMaxSize();
-        // Setup error reporting
-        Shutdown::init();
-        \set_error_handler($this->exceptionErrorHandler(...));
-        \set_exception_handler($this->exceptionHandler(...));
-        if (PHP_SAPI !== 'cli' && PHP_SAPI !== 'phpdbg') {
-            try {
-                \error_reporting(E_ALL);
-                \ini_set('log_errors', 1);
-                \ini_set('error_log', $type === LogType::FILE
-                    ? $path
-                    : Magic::$scriptCwd . DIRECTORY_SEPARATOR . 'Reymon.log'
-                );
-            } catch (Throwable $e) {
-                error_log("Could not enable PHP logging $e");
-            }
-        }
-
-        try {
-            \ini_set('memory_limit', -1);
-        } catch (Throwable $e) {}
-
-        try {
-            if (\function_exists('set_time_limit')) {
-                \set_time_limit(-1);
-            }
-        } catch (Throwable $e) {}
-
-        switch ($type) 
-        {
-            case LogType::FILE:
-                $stdout = openFile($path, 'w+');
-                if ($max !== -1) {
-                    $this->loggerLoop = EventLoop::repeat(
-                        10,
-                        function () use ($max, $path, &$stdout): void {
-                            \clearstatcache(true, $path);
-                            if (exists($path) && (getSize($path) >= $max)) {
-                                $stdout->truncate(0);
-                                $this->notice("Automatically truncated logfile to $max, Reymon");
-                            }
-                        },
-                    );
-                    // EventLoop::unreference($loggerLoop);
-                }
-                break;
-            case LogType::ECHO:
-                $stdout = getStdout();
-                break;
-            case LogType::DEFAULT_LOGGER:
-                $result = @\ini_get('error_log');
-                $stdout = match ($result) {
-                    false, 'syslog' => getStderr(),
-                    default => openFile($result, 'a+')
-                };
-                break;
-        }
-        $this->stream = $stdout;
-    }
-
-    /**
-     * Truncate log.
-     */
-    public function truncate(): void
-    {
-        $this->stream instanceof File
-            ? $this->stream->truncate(0)
-            : $this->stream->write("\033[2J\033[;H");
-    }
-
     public function __destruct()
     {
-        if (!empty($this->loggerLoop))
-            EventLoop::cancel($this->loggerLoop);
+        $this->stream->end();
     }
 }
