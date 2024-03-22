@@ -9,7 +9,7 @@
         "psr-3"
     ],
     "type": "library",
-    "license": "MIT",
+    "license": "GPL-3.0-only",
     "authors": [
         {
             "name": "Mahdi",
