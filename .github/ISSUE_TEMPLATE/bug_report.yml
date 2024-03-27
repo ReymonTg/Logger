@@ -1,0 +1,57 @@
+name: Bug Report
+description: Create a bug report
+title: "[BUG] "
+labels:
+  - bug
+body:
+
+  - type: dropdown
+    attributes:
+      label: PHP version
+      description: "PHP version you are running on."
+      options:
+        - 8.0
+        - 8.1
+        - 8.1.14
+        - 8.1.17
+        - 8.2
+        - 8.2.10
+      default: 0
+
+  - type: textarea
+    attributes:
+      label: What happened?
+      description: Also tell us, what did you expect to happen?
+      placeholder: Tell us what you see!
+      value: "A bug happened!"
+    validations:
+      required: true
+
+  - type: textarea
+    attributes:
+      label: To Reproduce
+      description: "Describe the steps to reproduce the behavior."
+      value: |
+        1. Go to '...'
+        2. Click on '....'
+        3. Scroll down to '....'
+        4. See error
+    validations:
+      required: true
+
+  - type: textarea
+    attributes:
+      label: Expected behavior
+      description: "A clear and concise description of what you expected to happen."
+    validations:
+      required: true
+
+  - type: textarea
+    attributes:
+      label: Screenshots
+      description: "If applicable, add screenshots to help explain your problem."
+
+  - type: textarea
+    attributes:
+      label: Additional context
+      description: "Add any other context about the problem here."
