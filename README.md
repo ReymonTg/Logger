@@ -1,2 +1,1 @@
-# Logger
-Async send your logs to files, sockets, inboxes, databases and various web services
+Non-blocking logging for PHP based on Amp & PSR-3
