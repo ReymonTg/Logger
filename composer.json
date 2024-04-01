@@ -33,6 +33,9 @@
         "amphp/file"      : "^3.0",
         "webmozart/assert": "^1.11"
     },
+    "require-dev": {
+        "amphp/php-cs-fixer-config": "^2.0"
+    },
     "scripts": {
         "build": [
             "@cs-fix"
