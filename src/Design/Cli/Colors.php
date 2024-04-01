@@ -15,7 +15,7 @@
 
 namespace Reymon\Logger\Design\Cli;
 
-enum Colors: string
+enum Colors
 {
     const BLACK             = "\033[0;30m";
     const DARK_GRAY         = "\033[1;30m";

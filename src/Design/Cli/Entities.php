@@ -15,19 +15,20 @@
 
 namespace Reymon\Logger\Design\Cli;
 
-enum Entities: string
+enum Entities
 {
-    case DEFAULT       = '';
-    case BOLD          = "\e[1m";
-    case UN_BOLD       = "\e[21m";
-    case DIM           = "\e[2m";
-    case UN_DIM        = "\e[22m";
-    case UNDERLINED    = "\e[4m";
-    case UN_UNDERLINED = "\e[24m";
-    case BLINK         = "\e[5m";
-    case UN_BLINK      = "\e[25m";
-    case HIGHLIGHT     = "\e[7m";
-    case UN_HIGHLIGHT  = "\e[27m";
-    case HIDDEN        = "\e[8m";
-    case UN_HIDDEN     = "\e[28m";
+    const DEFAULT       = '';
+    const REST          = "\e[0m";
+    const BOLD          = "\e[1m";
+    const UN_BOLD       = "\e[21m";
+    const DIM           = "\e[2m";
+    const UN_DIM        = "\e[22m";
+    const UNDERLINED    = "\e[4m";
+    const UN_UNDERLINED = "\e[24m";
+    const BLINK         = "\e[5m";
+    const UN_BLINK      = "\e[25m";
+    const HIGHLIGHT     = "\e[7m";
+    const UN_HIGHLIGHT  = "\e[27m";
+    const HIDDEN        = "\e[8m";
+    const UN_HIDDEN     = "\e[28m";
 }

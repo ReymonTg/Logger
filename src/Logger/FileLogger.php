@@ -27,7 +27,7 @@ final class FileLogger extends Logger
 
     public function __construct($path, $maxSize = -1, ?DateTimeZone $timezone = null)
     {
-        $file = openFile($path, 'w+');
+        $file = openFile($path, 'a+');
         parent::__construct($file, $timezone);
         if ($maxSize !== -1) {
             $this->loggerLoop = EventLoop::repeat(
@@ -40,7 +40,7 @@ final class FileLogger extends Logger
                     }
                 },
             );
-            // EventLoop::unreference($loggerLoop);
+            EventLoop::unreference($this->loggerLoop);
         }
     }
 

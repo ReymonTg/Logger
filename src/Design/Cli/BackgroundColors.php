@@ -15,7 +15,7 @@
 
 namespace Reymon\Logger\Design\Cli;
 
-enum BackgroundColors: string
+enum BackgroundColors
 {
     const BLACK         = "\033[40m";
     const RED           = "\033[41m";
