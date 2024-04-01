@@ -1,4 +1,6 @@
-<?php declare(strict_types=1);
+<?php
+
+declare(strict_types=1);
 
 /**
  * This file is part of Reymon.
@@ -14,24 +16,27 @@
 
 namespace Reymon\Logger;
 
-use Reymon\Logger\Formatter\ReymonFormatter;
 use Throwable;
+use Stringable;
 use DateTimeZone;
 use DateTimeImmutable;
 use Amp\File\File;
-use Amp\ByteStream\WritableStream;
-use Exception;
-use Psr\Log\AbstractLogger;
+use Amp\ByteStream\WritableResourceStream;
+use Webmozart\Assert\Assert;
 use Psr\Log\LoggerInterface;
+use Psr\Log\InvalidArgumentException;
+use function Amp\ByteStream\getOutputBufferStream;
 
 class Logger implements LoggerInterface
 {
-    use LoggerTrait;
-
+    protected string $prefix = '';
+    protected string $suffix = '';
+    protected string $dateFormat = 'Y-m-d H:i:s';
     protected DateTimeZone $timezone;
 
-    public function __construct(protected WritableStream $stream, ?DateTimeZone $timezone = null, protected Formatter $formatter = new ReymonFormatter())
+    public function __construct(protected WritableResourceStream|File $stream, ?DateTimeZone $timezone = null)
     {
+        LogLevel::hasColorSupport();
         $this->setTimezone($timezone);
         // Setup error reporting
         \set_error_handler($this->exceptionErrorHandler(...));
@@ -40,9 +45,11 @@ class Logger implements LoggerInterface
             try {
                 \error_reporting(E_ALL);
                 \ini_set('log_errors', 1);
-                \ini_set('error_log', $this->stream instanceof File
-                    ? $this->stream->getPath()
-                    : $this->getCwd() . DIRECTORY_SEPARATOR . 'Reymon.log'
+                \ini_set(
+                    'error_log',
+                    $this->stream instanceof File
+                        ? $this->stream->getPath()
+                        : $this->getCwd() . DIRECTORY_SEPARATOR . 'Reymon.log'
                 );
             } catch (Throwable $e) {
                 error_log("Could not enable PHP logging $e");
@@ -51,59 +58,25 @@ class Logger implements LoggerInterface
 
         try {
             \ini_set('memory_limit', -1);
-        } catch (Throwable $e) {}
+        } catch (Throwable $e) {
+        }
 
         try {
             if (\function_exists('set_time_limit')) {
                 \set_time_limit(-1);
             }
-        } catch (Throwable $e) {}
+        } catch (Throwable $e) {
+        }
     }
 
     private function getCwd(): string
     {
         try {
             return getcwd();
-        } catch (Throwable $e) {
+        } catch (Throwable) {
             $backtrace = debug_backtrace(0);
             return \dirname(end($backtrace)['file']);
         }
-    }
-    public function setFormatter(Formatter $formatter): self
-    {
-        $this->formatter = $formatter;
-        return $this;
-    }
-
-    public function getFormatter(): Formatter
-    {
-        return $this->formatter;
-    }
-
-    /**
-     * Logs with an arbitrary level.
-     *
-     * @param mixed  $level
-     * @param string|\Stringable $message
-     * @param array  $context
-     *
-     * @throws \Psr\Log\InvalidArgumentException
-     */
-    public function log($level, string|\Stringable $message, array $context = []): void
-    {
-        // Assert::isInstanceOf($level, LogLevel::class);
-
-        if ($message instanceof Exception) {
-            $message = (string) $message;
-        } elseif (!\is_string($message)) {
-            $message = json_encode($message, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR);
-        }
-        if (empty($file)) {
-            $file = basename(debug_backtrace(DEBUG_BACKTRACE_IGNORE_ARGS, 1)[0]['file'], '.php');
-        }
-        $record = new Record($this->timezone, $level, $message . PHP_EOL, $context);
-        $format = $this->formatter->format($record);
-        $this->stream->write($format);
     }
 
     /**
@@ -113,7 +86,8 @@ class Logger implements LoggerInterface
      */
     public function exceptionErrorHandler($errno = 0, $errstr = null, $errfile = null, $errline = null): bool
     {
-        $this->critical($errstr . ' in ' . \basename($errfile) . ':' . $errline);
+        if (!$this->stream->isClosed())
+            $this->critical($errstr . ' in ' . \basename($errfile) . ':' . $errline);
         return true;
     }
 
@@ -124,24 +98,149 @@ class Logger implements LoggerInterface
      */
     public function exceptionHandler(Throwable $exception): void
     {
+        if (!$this->stream->isClosed())
+            $this->critical($exception);
+        $this->echoException($exception);
+    }
+
+    public function echoException(Throwable $exception): void
+    {
         $e = (string) $exception;
-        $this->critical($e);
         if (\headers_sent())
             return;
 
         \http_response_code(500);
         if (PHP_SAPI === 'cli' || PHP_SAPI === 'phpdbg') {
-            echo($e . PHP_EOL);
+            $message = $e . PHP_EOL;
         } else {
-            echo(\str_replace("\n", "<br>", \htmlentities($e)).PHP_EOL);
+            $message = \nl2br(\htmlentities($e)) . PHP_EOL;
         }
-        die(1);
+        getOutputBufferStream()->write($message);
+    }
+
+    public function __destruct()
+    {
+        if (!$this->stream->isClosed())
+            $this->stream->end();
+    }
+
+    /**
+     * Interpolates context values into the message placeholders.
+     */
+    private function interpolate(string $message, array $context = []): string
+    {
+        // build a replacement array with braces around the context keys
+        $replace = [];
+        foreach ($context as $key => $val) {
+            // check that the value can be cast to string
+            if (!is_array($val) && (!is_object($val) || method_exists($val, '__toString'))) {
+                $replace['{' . $key . '}'] = $val;
+            }
+        }
+        // interpolate replacement values into the message and return
+        return strtr($message, $replace);
+    }
+
+    /**
+     * Logs with an arbitrary level.
+     *
+     * @param LogLevel          $level
+     * @param string|Stringable $message
+     * @param array             $context
+     *
+     * @throws InvalidArgumentException
+     */
+    public function log($level, string|Stringable $message, array $context = []): void
+    {
+        Assert::isInstanceOf($level, LogLevel::class);
+        $message = (string) $message;
+        $trace   = debug_backtrace(DEBUG_BACKTRACE_IGNORE_ARGS, );
+        $file    = basename(end($trace)['file'], '.php');
+        $message = $this->interpolate($message, $context);
+        $format  = $this->format($level, $message, $file);
+        $this->stream->write($format);
+    }
+
+    private function format(LogLevel $level, string $message, $file): string
+    {
+        $time = (new DateTimeImmutable(timezone: $this->timezone))->format($this->dateFormat);
+        $info = $this->prefix . "[$time] " . $level->getBracket() . " [$file]" . $this->suffix . ':';
+        if (!$this->stream instanceof File && $level::hasColorSupport())
+            $info = $level->getCliColor($info);
+        return $info . ' ' . $message . PHP_EOL;
+    }
+
+//    public function formatFile(LogLevel $level, string $message, $file): string
+//    {
+//        $info = $this->prefix . "[{$this->getTime()}] " . $level->getBracket() . " [$file]:" . $this->suffix;
+//        if (!\headers_sent() && PHP_SAPI !== 'cli' && PHP_SAPI !== 'phpdbg') {
+//            \http_response_code(500);
+//            getOutputBufferStream()->write(sprintf($level->getWebColor(), $info) . ' ' . htmlentities($message) . '<br>');
+//        }
+//        return $info . ' ' . $message . PHP_EOL;
+//    }
+
+    /**
+     * Set time format
+     *
+     * @param string $format
+     */
+    public function setDateFormat(string $format): self
+    {
+        $this->dateFormat = $format;
+        return $this;
+    }
+
+    /**
+     * Get time format
+     */
+    public function getDateFormat(): string
+    {
+        return $this->dateFormat;
+    }
+
+    /*
+     * Set suffix to be used for the log records
+     *
+     * @param string $suffix The suffix
+     */
+    public function setSuffix(string $suffix): self
+    {
+        $this->suffix = $suffix;
+        return $this;
+    }
+
+    /*
+     * Get suffix to be used for the log records
+     */
+    public function getSuffix(): string
+    {
+        return $this->suffix;
+    }
+
+    /*
+     * Set prefix to be used for the log records
+     *
+     * @param string $prefix The prefix
+     */
+    public function setPrefix(string $prefix): self
+    {
+        $this->prefix = $prefix;
+        return $this;
+    }
+
+    /*
+     * Get prefix to be used for log records
+     */
+    public function getPrefix(): string
+    {
+        return $this->prefix;
     }
 
     /**
      * Sets the timezone to be used for the timestamp of log records.
      *
-     * @return $this
+     * @param ?DateTimeZone $tz Time zone
      */
     public function setTimezone(?DateTimeZone $tz = null): self
     {
@@ -157,8 +256,118 @@ class Logger implements LoggerInterface
         return $this->timezone;
     }
 
-    public function __destruct()
+    /**
+     * System is unusable.
+     *
+     * @param string|Stringable $message
+     * @param array             $context
+     *
+     * @return void
+     */
+    public function emergency(string|Stringable $message, array $context = []): void
     {
-        $this->stream->end();
+        $this->log(LogLevel::EMERGENCY, $message, $context);
+    }
+
+    /**
+     * Action must be taken immediately.
+     *
+     * Example: Entire website down, database unavailable, etc. This should
+     * trigger the SMS alerts and wake you up.
+     *
+     * @param string|Stringable $message
+     * @param array             $context
+     *
+     * @return void
+     */
+    public function alert(string|Stringable $message, array $context = []): void
+    {
+        $this->log(LogLevel::ALERT, $message, $context);
+    }
+
+    /**
+     * Critical conditions.
+     *
+     * Example: Application component unavailable, unexpected exception.
+     *
+     * @param string|Stringable $message
+     * @param array             $context
+     *
+     * @return void
+     */
+    public function critical(string|Stringable $message, array $context = []): void
+    {
+        $this->log(LogLevel::CRITICAL, $message, $context);
+    }
+
+    /**
+     * Runtime errors that do not require immediate action but should typically
+     * be logged and monitored.
+     *
+     * @param string|Stringable $message
+     * @param array             $context
+     *
+     * @return void
+     */
+    public function error(string|Stringable $message, array $context = []): void
+    {
+        $this->log(LogLevel::ERROR, $message, $context);
+    }
+
+    /**
+     * Exceptional occurrences that are not errors.
+     *
+     * Example: Use of deprecated APIs, poor use of an API, undesirable things
+     * that are not necessarily wrong.
+     *
+     * @param string|Stringable $message
+     * @param array             $context
+     *
+     * @return void
+     */
+    public function warning(string|Stringable $message, array $context = []): void
+    {
+        $this->log(LogLevel::WARNING, $message, $context);
+    }
+
+    /**
+     * Normal but significant events.
+     *
+     * @param string|Stringable $message
+     * @param array             $context
+     *
+     * @return void
+     */
+    public function notice(string|Stringable $message, array $context = []): void
+    {
+        $this->log(LogLevel::NOTICE, $message, $context);
+    }
+
+    /**
+     * Interesting events.
+     *
+     * Example: User logs in, SQL logs.
+     *
+     * @param string|Stringable $message
+     * @param array             $context
+     *
+     * @return void
+     */
+    public function info(string|Stringable $message, array $context = []): void
+    {
+        $this->log(LogLevel::INFO, $message, $context);
+    }
+
+    /**
+     * Detailed debug information.
+     *
+     * @param string|Stringable $message
+     * @param array             $context
+     *
+     * @return void
+     */
+    public function debug(string|Stringable $message, array $context = []): void
+    {
+        $this->log(LogLevel::DEBUG, $message, $context);
     }
 }
