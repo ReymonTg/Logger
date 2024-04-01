@@ -16,12 +16,17 @@ namespace Reymon\Logger\Logger;
 
 use DateTimeZone;
 use Reymon\Logger\Logger;
+use Webmozart\Assert\Assert;
+use Amp\File\File;
+use Amp\ByteStream\WritableResourceStream;
 use function Amp\ByteStream\getStdout;
 
 final class EchoLogger extends Logger
 {
-    public function __construct(?DateTimeZone $timezone = null)
+    public function __construct(?WritableResourceStream $stream = null, ?DateTimeZone $timezone = null)
     {
-        parent::__construct(getStdout(), $timezone);
+        $stream ??= getStdout();
+        Assert::false($stream instanceof File, 'Use FileLogger Class!');
+        parent::__construct($stream, $timezone);
     }
 }

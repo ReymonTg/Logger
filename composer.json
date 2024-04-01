@@ -41,5 +41,6 @@
             "@cs-fix"
         ],
         "cs-fix": "php -d pcre.jit=0 vendor/bin/php-cs-fixer --config=.php-cs-fixer.dist.php fix -v"
-    }
+    },
+    "minimum-stability": "dev"
 }
