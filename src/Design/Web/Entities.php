@@ -8,16 +8,17 @@
  * If not, see <http://www.gnu.org/licenses/>.
  *
  * @author    AhJ <AmirHosseinJafari8228@gmail.com>
- * @copyright 2023-2024 AhJ <AmirHosseinJafari8228@gmail.com>
+ * @author    Mahdi <mahdi.talaee1379@gmail.com>
+ * @copyright 2023-2024 Mahdi <mahdi.talaee1379@gmail.com>
  * @license   https://choosealicense.com/licenses/gpl-3.0/ GPLv3
  */
 
-namespace Reymon\Logger;
+namespace Reymon\Logger\Design\Web;
 
-final readonly class Record
+enum Entities: string
 {
-    public function __construct(public LogLevel $level, public string $message, public string $time)
-    {
-
-    }
+    case DEFAULT   = '';
+    case BOLD      = '<b>%s</b>';
+    case UNDERLINE = '<u>%s</u>';
+    case HIGHLIGHT = '<mark>%s</mark>';
 }
