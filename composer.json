@@ -1,7 +1,8 @@
 {
     "name": "reymon/logger",
-    "description": "Async send your logs to files, sockets, inboxes, databases and various web services",
+    "description": "Non-blocking logging for PHP based on Amp & psr3",
     "keywords": [
+        "amphp log",
         "async",
         "logger",
         "log",
@@ -26,10 +27,10 @@
         }
     },
     "require": {
-        "php-64bit" : ">=8.2.17",
-        "ext-mbstring": "*",
-        "psr/log": "^3",
-        "amphp/file": "^3.0",
+        "php-64bit"       : ">=8.2.17",
+        "ext-mbstring"    : "*",
+        "psr/log"         : "^3",
+        "amphp/file"      : "^3.0",
         "webmozart/assert": "^1.11"
     },
     "scripts": {
