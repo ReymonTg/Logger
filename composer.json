@@ -26,7 +26,7 @@
         }
     },
     "require": {
-        "php-64bit": ">=8.1",
+        "php-64bit" : ">=8.2.17",
         "ext-mbstring": "*",
         "psr/log": "^3",
         "amphp/file": "^3.0",
@@ -36,7 +36,6 @@
         "build": [
             "@cs-fix"
         ],
-        "cs-fix": "PHP_CS_FIXER_IGNORE_ENV=1 php -d pcre.jit=0 vendor/bin/php-cs-fixer fix -v"
-    },
-    "minimum-stability": "stable"
+        "cs-fix": "php -d pcre.jit=0 vendor/bin/php-cs-fixer --config=.php-cs-fixer.dist.php fix -v"
+    }
 }
