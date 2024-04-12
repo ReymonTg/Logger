@@ -24,10 +24,13 @@ use function Amp\ByteStream\getStdout;
 
 final class CallableLogger extends Logger
 {
-    public function __construct(private callable|Closure $callback, ?DateTimeZone $timezone = null)
+    private Closure $callback;
+
+    public function __construct(callable|Closure $cb, ?DateTimeZone $timezone = null)
     {
         parent::__construct(getStdout(), $timezone);
         $this->stream->close();
+        $this->callback = $cb instanceof Closure ? $cb : Closure::fromCallable($cb);
     }
 
     public function log($level, string|\Stringable $message, array $context = []): void
