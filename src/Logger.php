@@ -16,6 +16,9 @@ declare(strict_types=1);
 
 namespace Reymon\Logger;
 
+use Amp\DeferredFuture;
+use Amp\SignalException;
+use Revolt\EventLoop;
 use Throwable;
 use Stringable;
 use DateTimeZone;
@@ -25,18 +28,28 @@ use Amp\ByteStream\WritableResourceStream;
 use Webmozart\Assert\Assert;
 use Psr\Log\LoggerInterface;
 use Psr\Log\InvalidArgumentException;
+use const SIG_DFL;
+use const SIGINT;
+use const SIGTERM;
+use const E_ALL;
+use const PHP_SAPI;
+use const DIRECTORY_SEPARATOR;
+
 use function Amp\ByteStream\getOutputBufferStream;
 
 class Logger implements LoggerInterface
 {
+    /** Whether to suspend certain stdout log printing, when reading input. */
+    protected ?DeferredFuture $suspendPeriodicLogging = null;
+    protected DateTimeZone $timezone;
+    protected bool $isatty;
     protected string $prefix = '';
     protected string $suffix = '';
     protected string $dateFormat = 'Y-m-d H:i:s';
-    protected DateTimeZone $timezone;
 
     public function __construct(protected WritableResourceStream|File $stream, ?DateTimeZone $timezone = null)
     {
-        LogLevel::hasColorSupport();
+        $this->isatty = \defined('STDOUT') && LogLevel::hasColorSupport();
         $this->setTimezone($timezone);
         // Setup error reporting
         \set_error_handler($this->exceptionErrorHandler(...));
@@ -66,6 +79,27 @@ class Logger implements LoggerInterface
                 \set_time_limit(-1);
             }
         } catch (Throwable $e) {
+        }
+
+        // Define signal handlers
+        if (\defined('SIGINT')) {
+            try {
+                pcntl_signal(SIGINT, static fn () => null);
+                pcntl_signal(SIGINT, SIG_DFL);
+                EventLoop::unreference(EventLoop::onSignal(SIGINT, function (): void {
+                    if ($this->suspendPeriodicLogging) {
+                        $this->togglePeriodicLogging();
+                    }
+                    throw new SignalException('SIGINT received');
+                }));
+                EventLoop::unreference(EventLoop::onSignal(SIGTERM, function (): void {
+                    if ($this->suspendPeriodicLogging) {
+                        $this->togglePeriodicLogging();
+                    }
+                    throw new SignalException('SIGTERM received');
+                }));
+            } catch (Throwable $e) {
+            }
         }
     }
 
@@ -152,10 +186,18 @@ class Logger implements LoggerInterface
      */
     public function log($level, string|Stringable $message, array $context = []): void
     {
+        if ($this->suspendPeriodicLogging) {
+            $this->suspendPeriodicLogging->getFuture()->map(fn () => $this->log($level, $message, $context));
+            return;
+        }
         Assert::isInstanceOf($level, LogLevel::class);
         $message = (string) $message;
-        $trace   = debug_backtrace(DEBUG_BACKTRACE_IGNORE_ARGS, );
-        $file    = basename(end($trace)['file'], '.php');
+        if ($message instanceof Throwable) {
+            $file =$message->getFile();
+        } else {
+            $d    = debug_backtrace(DEBUG_BACKTRACE_IGNORE_ARGS);
+            $file = basename(end($d)['file'], '.php');
+        }
         $message = $this->interpolate($message, $context);
         $format  = $this->format($level, $message, $file);
         $this->stream->write($format);
@@ -165,7 +207,7 @@ class Logger implements LoggerInterface
     {
         $time = (new DateTimeImmutable(timezone: $this->timezone))->format($this->dateFormat);
         $info = $this->prefix . "[$time] " . $level->getBracket() . " [$file]" . $this->suffix . ':';
-        if (!$this->stream instanceof File && $level::hasColorSupport())
+        if (!$this->stream instanceof File && $this->isatty)
             $info = $level->getCliColor($info);
         return $info . ' ' . $message . PHP_EOL;
     }
@@ -179,6 +221,23 @@ class Logger implements LoggerInterface
 //        }
 //        return $info . ' ' . $message . PHP_EOL;
 //    }
+
+    /**
+     * Toggle periodic logging.
+     */
+    public function togglePeriodicLogging(): void
+    {
+        if ($this->suspendPeriodicLogging) {
+            $deferred = $this->suspendPeriodicLogging;
+            $this->suspendPeriodicLogging = null;
+            $deferred->complete();
+        } else {
+            $this->suspendPeriodicLogging = new DeferredFuture;
+            $f = new DeferredFuture;
+            $f->complete();
+            $f->getFuture()->await();
+        }
+    }
 
     /**
      * Set time format
@@ -199,7 +258,7 @@ class Logger implements LoggerInterface
         return $this->dateFormat;
     }
 
-    /*
+    /**
      * Set suffix to be used for the log records
      *
      * @param string $suffix The suffix
@@ -210,7 +269,7 @@ class Logger implements LoggerInterface
         return $this;
     }
 
-    /*
+    /**
      * Get suffix to be used for the log records
      */
     public function getSuffix(): string
@@ -218,7 +277,7 @@ class Logger implements LoggerInterface
         return $this->suffix;
     }
 
-    /*
+    /**
      * Set prefix to be used for the log records
      *
      * @param string $prefix The prefix
@@ -229,7 +288,7 @@ class Logger implements LoggerInterface
         return $this;
     }
 
-    /*
+    /**
      * Get prefix to be used for log records
      */
     public function getPrefix(): string
