@@ -18,6 +18,7 @@ namespace Reymon\Logger;
 
 use Amp\DeferredFuture;
 use Amp\SignalException;
+use Amp\Sync\LocalMutex;
 use Revolt\EventLoop;
 use Throwable;
 use Stringable;
@@ -25,6 +26,9 @@ use DateTimeZone;
 use DateTimeImmutable;
 use Amp\File\File;
 use Amp\ByteStream\WritableResourceStream;
+use Amp\Sync\Lock;
+use Amp\Sync\Mutex;
+use Exception;
 use Webmozart\Assert\Assert;
 use Psr\Log\LoggerInterface;
 use Psr\Log\InvalidArgumentException;
@@ -46,6 +50,8 @@ class Logger implements LoggerInterface
     protected string $prefix = '';
     protected string $suffix = '';
     protected string $dateFormat = 'Y-m-d H:i:s';
+    protected Mutex $mutex;
+    protected ?Lock $lock;
 
     public function __construct(protected WritableResourceStream|File $stream, ?DateTimeZone $timezone = null)
     {
@@ -101,6 +107,8 @@ class Logger implements LoggerInterface
             } catch (Throwable $e) {
             }
         }
+        $this->mutex = new LocalMutex;
+        $this->lock = null;
     }
 
     private function getCwd(): string
@@ -190,17 +198,27 @@ class Logger implements LoggerInterface
             $this->suspendPeriodicLogging->getFuture()->map(fn () => $this->log($level, $message, $context));
             return;
         }
-        Assert::isInstanceOf($level, LogLevel::class);
-        $message = (string) $message;
-        if ($message instanceof Throwable) {
-            $file =$message->getFile();
-        } else {
-            $d    = debug_backtrace(DEBUG_BACKTRACE_IGNORE_ARGS);
-            $file = basename(end($d)['file'], '.php');
+        $lock = $this->mutex->acquire();
+        try {
+            Assert::isInstanceOf($level, LogLevel::class);
+            $message = (string) $message;
+            if ($message instanceof Throwable) {
+                $file =$message->getFile();
+            } else {
+                // try {
+                //     throw new Exception('Error');
+                // } catch (Exception $e) {
+                //     echo json_encode($e->getTrace(), 448);
+                // }
+                $d    = debug_backtrace(DEBUG_BACKTRACE_IGNORE_ARGS);
+                $file = basename(end($d)['file'], '.php');
+            }
+            $message = $this->interpolate($message, $context);
+            $format  = $this->format($level, $message, $file);
+            $this->stream->write($format);
+        } finally {
+            $lock->release();
         }
-        $message = $this->interpolate($message, $context);
-        $format  = $this->format($level, $message, $file);
-        $this->stream->write($format);
     }
 
     private function format(LogLevel $level, string $message, $file): string
