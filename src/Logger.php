@@ -1,6 +1,4 @@
-<?php
-
-declare(strict_types=1);
+<?php declare(strict_types=1);
 
 /**
  * This file is part of Reymon.
@@ -16,29 +14,27 @@ declare(strict_types=1);
 
 namespace Reymon\Logger;
 
-use Amp\DeferredFuture;
-use Amp\SignalException;
-use Amp\Sync\LocalMutex;
-use Revolt\EventLoop;
 use Throwable;
 use Stringable;
 use DateTimeZone;
 use DateTimeImmutable;
-use Amp\File\File;
-use Amp\ByteStream\WritableResourceStream;
-use Amp\Sync\Lock;
-use Amp\Sync\Mutex;
-use Exception;
+use Revolt\EventLoop;
 use Webmozart\Assert\Assert;
 use Psr\Log\LoggerInterface;
 use Psr\Log\InvalidArgumentException;
-use const SIG_DFL;
-use const SIGINT;
-use const SIGTERM;
+use Amp\File\File;
+use Amp\Sync\Lock;
+use Amp\Sync\Mutex;
+use Amp\DeferredFuture;
+use Amp\SignalException;
+use Amp\Sync\LocalMutex;
+use Amp\ByteStream\WritableResourceStream;
 use const E_ALL;
+use const SIGINT;
+use const SIG_DFL;
+use const SIGTERM;
 use const PHP_SAPI;
 use const DIRECTORY_SEPARATOR;
-
 use function Amp\ByteStream\getOutputBufferStream;
 
 class Logger implements LoggerInterface
@@ -52,6 +48,8 @@ class Logger implements LoggerInterface
     protected string $dateFormat = 'Y-m-d H:i:s';
     protected Mutex $mutex;
     protected ?Lock $lock;
+
+    protected bool $fullName = true;
 
     public function __construct(protected WritableResourceStream|File $stream, ?DateTimeZone $timezone = null)
     {
@@ -128,8 +126,15 @@ class Logger implements LoggerInterface
      */
     public function exceptionErrorHandler($errno = 0, $errstr = null, $errfile = null, $errline = null): bool
     {
-        if (!$this->stream->isClosed())
-            $this->critical($errstr . ' in ' . \basename($errfile) . ':' . $errline);
+        // if (!$this->stream->isClosed()) {
+            $level = match ($errno) {
+                E_ERROR  , E_USER_ERROR   => LogLevel::ERROR,
+                E_WARNING, E_USER_WARNING => LogLevel::WARNING,
+                E_NOTICE , E_USER_NOTICE  => LogLevel::NOTICE,
+                default => LogLevel::CRITICAL
+            };
+            $this->log($level, $errstr . ' in ' . \basename($errfile) . ':' . $errline);
+        // }
         return true;
     }
 
@@ -140,7 +145,7 @@ class Logger implements LoggerInterface
      */
     public function exceptionHandler(Throwable $exception): void
     {
-        if (!$this->stream->isClosed())
+        // if (!$this->stream->isClosed())
             $this->critical($exception);
         $this->echoException($exception);
     }
@@ -201,18 +206,13 @@ class Logger implements LoggerInterface
         $lock = $this->mutex->acquire();
         try {
             Assert::isInstanceOf($level, LogLevel::class);
-            $message = (string) $message;
             if ($message instanceof Throwable) {
-                $file =$message->getFile();
+                $file = $message->getFile();
             } else {
-                // try {
-                //     throw new Exception('Error');
-                // } catch (Exception $e) {
-                //     echo json_encode($e->getTrace(), 448);
-                // }
                 $d    = debug_backtrace(DEBUG_BACKTRACE_IGNORE_ARGS);
-                $file = basename(end($d)['file'], '.php');
+                $file = end($d)['file'] ?? 'Not.php';
             }
+            $message = (string) $message;
             $message = $this->interpolate($message, $context);
             $format  = $this->format($level, $message, $file);
             $this->stream->write($format);
@@ -221,8 +221,9 @@ class Logger implements LoggerInterface
         }
     }
 
-    private function format(LogLevel $level, string $message, $file): string
+    private function format(LogLevel $level, string $message, string $file): string
     {
+        $file = $this->fullName ? $file : basename($file, '.php');
         $time = (new DateTimeImmutable(timezone: $this->timezone))->format($this->dateFormat);
         $info = $this->prefix . "[$time] " . $level->getBracket() . " [$file]" . $this->suffix . ':';
         if (!$this->stream instanceof File && $this->isatty)
@@ -331,6 +332,25 @@ class Logger implements LoggerInterface
     public function getTimezone(): DateTimeZone
     {
         return $this->timezone;
+    }
+
+    /**
+     * Whether to show full file name
+     *
+     * @param bool $fullName
+     */
+    public function setFullName(bool $fullName = false): self
+    {
+        $this->fullName = $fullName;
+        return $this;
+    }
+
+    /**
+     * Whether to show full file name
+     */
+    public function getFullName(): bool
+    {
+        return $this->fullName;
     }
 
     /**
