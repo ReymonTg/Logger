@@ -46,10 +46,9 @@ class Logger implements LoggerInterface
     protected string $prefix = '';
     protected string $suffix = '';
     protected string $dateFormat = 'Y-m-d H:i:s';
+    protected bool $fullName = false;
     protected Mutex $mutex;
     protected ?Lock $lock;
-
-    protected bool $fullName = false;
 
     public function __construct(protected WritableResourceStream|File $stream, ?DateTimeZone $timezone = null)
     {
