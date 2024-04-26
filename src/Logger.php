@@ -23,10 +23,8 @@ use Webmozart\Assert\Assert;
 use Psr\Log\LoggerInterface;
 use Psr\Log\InvalidArgumentException;
 use Amp\File\File;
-use Amp\Sync\Lock;
-use Amp\Sync\Mutex;
-use Amp\DeferredFuture;
 use Amp\SignalException;
+use Amp\Sync\Mutex;
 use Amp\Sync\LocalMutex;
 use Amp\ByteStream\WritableResourceStream;
 use const E_ALL;
@@ -39,16 +37,13 @@ use function Amp\ByteStream\getOutputBufferStream;
 
 class Logger implements LoggerInterface
 {
-    /** Whether to suspend certain stdout log printing, when reading input. */
-    protected ?DeferredFuture $suspendPeriodicLogging = null;
-    protected DateTimeZone $timezone;
-    protected bool $isatty;
-    protected string $prefix = '';
-    protected string $suffix = '';
-    protected string $dateFormat = 'Y-m-d H:i:s';
-    protected bool $fullName = false;
-    protected Mutex $mutex;
-    protected ?Lock $lock;
+    private DateTimeZone $timezone;
+    private bool $isatty;
+    private string $prefix = '';
+    private string $suffix = '';
+    private string $dateFormat = 'Y-m-d H:i:s';
+    private bool $fullName = false;
+    private Mutex $mutex;
 
     public function __construct(protected WritableResourceStream|File $stream, ?DateTimeZone $timezone = null)
     {
@@ -105,7 +100,18 @@ class Logger implements LoggerInterface
             }
         }
         $this->mutex = new LocalMutex;
-        $this->lock = null;
+    }
+
+    public function __destruct()
+    {
+        try {
+            if (!$this->stream->isClosed())
+            $this->stream->close();
+        } catch (Throwable $e)
+        {
+            $this->echoException($e);
+        }
+
     }
 
     private function getCwd(): string
@@ -164,11 +170,6 @@ class Logger implements LoggerInterface
         getOutputBufferStream()->write($message);
     }
 
-    public function __destruct()
-    {
-        if (!$this->stream->isClosed())
-            $this->stream->end();
-    }
 
     /**
      * Interpolates context values into the message placeholders.
@@ -198,10 +199,11 @@ class Logger implements LoggerInterface
      */
     public function log($level, string|Stringable $message, array $context = []): void
     {
-        if ($this->suspendPeriodicLogging) {
-            $this->suspendPeriodicLogging->getFuture()->map(fn () => $this->log($level, $message, $context));
-            return;
-        }
+        $time = new DateTimeImmutable();
+        // if ($this->suspendPeriodicLogging) {
+        //     $this->suspendPeriodicLogging->getFuture()->map(fn () => $this->log($level, $message, $context));
+        //     return;
+        // }
         $lock = $this->mutex->acquire();
         try {
             Assert::isInstanceOf($level, LogLevel::class);
@@ -209,52 +211,25 @@ class Logger implements LoggerInterface
                 $file = $message->getFile();
             } else {
                 $d    = debug_backtrace(DEBUG_BACKTRACE_IGNORE_ARGS);
-                $file = end($d)['file'] ?? 'Not.php';
+                $file = end($d)['file'] ?? 'Not.php'; // todo
             }
             $message = (string) $message;
             $message = $this->interpolate($message, $context);
-            $format  = $this->format($level, $message, $file);
+            $format  = $this->format($level, $message, $file, $time);
             $this->stream->write($format);
         } finally {
             $lock->release();
         }
     }
 
-    private function format(LogLevel $level, string $message, string $file): string
+    private function format(LogLevel $level, string $message, string $file, DateTimeImmutable $time): string
     {
-        $file = $this->fullName ? $file : basename($file, '.php');
-        $time = (new DateTimeImmutable(timezone: $this->timezone))->format($this->dateFormat);
+        $file = ($this->fullName ? dirname($file) : '' ). basename($file, '.php');
+        $time = $time->setTimezone($this->timezone)->format($this->dateFormat);
         $info = $this->prefix . "[$time] " . $level->getBracket() . " [$file]" . $this->suffix . ':';
         if (!$this->stream instanceof File && $this->isatty)
             $info = $level->getCliColor($info);
-        return $info . ' ' . $message . PHP_EOL;
-    }
-
-//    public function formatFile(LogLevel $level, string $message, $file): string
-//    {
-//        $info = $this->prefix . "[{$this->getTime()}] " . $level->getBracket() . " [$file]:" . $this->suffix;
-//        if (!\headers_sent() && PHP_SAPI !== 'cli' && PHP_SAPI !== 'phpdbg') {
-//            \http_response_code(500);
-//            getOutputBufferStream()->write(sprintf($level->getWebColor(), $info) . ' ' . htmlentities($message) . '<br>');
-//        }
-//        return $info . ' ' . $message . PHP_EOL;
-//    }
-
-    /**
-     * Toggle periodic logging.
-     */
-    public function togglePeriodicLogging(): void
-    {
-        if ($this->suspendPeriodicLogging) {
-            $deferred = $this->suspendPeriodicLogging;
-            $this->suspendPeriodicLogging = null;
-            $deferred->complete();
-        } else {
-            $this->suspendPeriodicLogging = new DeferredFuture;
-            $f = new DeferredFuture;
-            $f->complete();
-            $f->getFuture()->await();
-        }
+        return  $info . ' ' . $message . PHP_EOL;
     }
 
     /**
