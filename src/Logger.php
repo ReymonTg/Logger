@@ -85,15 +85,9 @@ class Logger implements LoggerInterface
                 pcntl_signal(SIGINT, static fn () => null);
                 pcntl_signal(SIGINT, SIG_DFL);
                 EventLoop::unreference(EventLoop::onSignal(SIGINT, function (): void {
-                    if ($this->suspendPeriodicLogging) {
-                        $this->togglePeriodicLogging();
-                    }
                     throw new SignalException('SIGINT received');
                 }));
                 EventLoop::unreference(EventLoop::onSignal(SIGTERM, function (): void {
-                    if ($this->suspendPeriodicLogging) {
-                        $this->togglePeriodicLogging();
-                    }
                     throw new SignalException('SIGTERM received');
                 }));
             } catch (Throwable $e) {
@@ -101,17 +95,16 @@ class Logger implements LoggerInterface
         }
         $this->mutex = new LocalMutex;
     }
-
+    
     public function __destruct()
     {
         try {
             if (!$this->stream->isClosed())
-            $this->stream->close();
+                $this->stream->close();
         } catch (Throwable $e)
         {
             $this->echoException($e);
         }
-
     }
 
     private function getCwd(): string
@@ -200,10 +193,6 @@ class Logger implements LoggerInterface
     public function log($level, string|Stringable $message, array $context = []): void
     {
         $time = new DateTimeImmutable();
-        // if ($this->suspendPeriodicLogging) {
-        //     $this->suspendPeriodicLogging->getFuture()->map(fn () => $this->log($level, $message, $context));
-        //     return;
-        // }
         $lock = $this->mutex->acquire();
         try {
             Assert::isInstanceOf($level, LogLevel::class);
