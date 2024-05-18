@@ -30,8 +30,8 @@
         "php-64bit"       : ">=8.2.17",
         "ext-mbstring"    : "*",
         "psr/log"         : "^3",
-        "amphp/file"      : "^3.0",
-        "webmozart/assert": "^1.11"
+        "amphp/file"      : "^3",
+        "webmozart/assert": "^1"
     },
     "require-dev": {
         "amphp/php-cs-fixer-config": "^2.0"
