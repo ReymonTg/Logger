@@ -16,8 +16,8 @@ namespace Reymon\Logger\Logger;
 
 use Closure;
 use DateTimeZone;
-use Revolt\EventLoop;
 use Psr\Log\LogLevel;
+use Revolt\EventLoop;
 use Reymon\Logger\Logger;
 use Webmozart\Assert\Assert;
 use function Amp\ByteStream\getStdout;

@@ -32,7 +32,7 @@ enum LogLevel: string
 
     public function getBracket(): string
     {
-        return "[" . $this->name . "]" . str_pad('', 9 - mb_strlen($this->name));
+        return "[" . $this->name . "]" . \str_pad('', 9 - \mb_strlen($this->name));
     }
 
     public function getCliColor(string $message): string
@@ -62,7 +62,7 @@ enum LogLevel: string
             LogLevel::ALERT     => WebColors::CYAN,
             LogLevel::EMERGENCY => WebColors::LIGHT_MAGENTA,
         };
-        return sprintf($color, $message);
+        return \sprintf($color, $message);
     }
 
     /**
@@ -91,7 +91,7 @@ enum LogLevel: string
                     \PHP_WINDOWS_VERSION_BUILD,
                 );
 
-                return $supported = (\function_exists('sapi_windows_vt100_support') && sapi_windows_vt100_support(\STDOUT))
+                return $supported = (\function_exists('sapi_windows_vt100_support') && \sapi_windows_vt100_support(\STDOUT))
                     || $windowsVersion === '10.0.10586' // equals is correct here, newer versions use the above function
                     || false !== \getenv('ANSICON')
                     || 'ON' === \getenv('ConEmuANSI')
@@ -99,7 +99,7 @@ enum LogLevel: string
             }
 
             if (\function_exists('posix_isatty')) {
-                return $supported = \posix_isatty(\STDOUT);
+                return $supported = posix_isatty(\STDOUT);
             }
         } finally {
             \restore_error_handler();

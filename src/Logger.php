@@ -14,25 +14,25 @@
 
 namespace Reymon\Logger;
 
-use Throwable;
-use Stringable;
-use DateTimeZone;
-use DateTimeImmutable;
-use Revolt\EventLoop;
-use Webmozart\Assert\Assert;
-use Psr\Log\LoggerInterface;
-use Psr\Log\InvalidArgumentException;
+use Amp\ByteStream\WritableResourceStream;
 use Amp\File\File;
 use Amp\SignalException;
-use Amp\Sync\Mutex;
 use Amp\Sync\LocalMutex;
-use Amp\ByteStream\WritableResourceStream;
-use const E_ALL;
-use const SIGINT;
-use const SIG_DFL;
-use const SIGTERM;
-use const PHP_SAPI;
+use Amp\Sync\Mutex;
+use DateTimeImmutable;
+use DateTimeZone;
+use Psr\Log\InvalidArgumentException;
+use Psr\Log\LoggerInterface;
+use Revolt\EventLoop;
+use Stringable;
+use Throwable;
+use Webmozart\Assert\Assert;
 use const DIRECTORY_SEPARATOR;
+use const E_ALL;
+use const PHP_SAPI;
+use const SIG_DFL;
+use const SIGINT;
+use const SIGTERM;
 use function Amp\ByteStream\getOutputBufferStream;
 
 class Logger implements LoggerInterface
@@ -63,7 +63,7 @@ class Logger implements LoggerInterface
                         : $this->getCwd() . DIRECTORY_SEPARATOR . 'Reymon.log'
                 );
             } catch (Throwable $e) {
-                error_log("Could not enable PHP logging $e");
+                \error_log("Could not enable PHP logging $e");
             }
         }
 
@@ -95,14 +95,14 @@ class Logger implements LoggerInterface
         }
         $this->mutex = new LocalMutex;
     }
-    
+
     public function __destruct()
     {
         try {
-            if (!$this->stream->isClosed())
+            if (!$this->stream->isClosed()) {
                 $this->stream->close();
-        } catch (Throwable $e)
-        {
+            }
+        } catch (Throwable $e) {
             $this->echoException($e);
         }
     }
@@ -110,10 +110,10 @@ class Logger implements LoggerInterface
     private function getCwd(): string
     {
         try {
-            return getcwd();
+            return \getcwd();
         } catch (Throwable) {
-            $backtrace = debug_backtrace(0);
-            return \dirname(end($backtrace)['file']);
+            $backtrace = \debug_backtrace(0);
+            return \dirname(\end($backtrace)['file']);
         }
     }
 
@@ -125,13 +125,13 @@ class Logger implements LoggerInterface
     public function exceptionErrorHandler($errno = 0, $errstr = null, $errfile = null, $errline = null): bool
     {
         // if (!$this->stream->isClosed()) {
-            $level = match ($errno) {
-                E_ERROR  , E_USER_ERROR   => LogLevel::ERROR,
-                E_WARNING, E_USER_WARNING => LogLevel::WARNING,
-                E_NOTICE , E_USER_NOTICE  => LogLevel::NOTICE,
-                default => LogLevel::CRITICAL
-            };
-            $this->log($level, $errstr . ' in ' . \basename($errfile) . ':' . $errline);
+        $level = match ($errno) {
+            E_ERROR  , E_USER_ERROR   => LogLevel::ERROR,
+            E_WARNING, E_USER_WARNING => LogLevel::WARNING,
+            E_NOTICE , E_USER_NOTICE  => LogLevel::NOTICE,
+            default => LogLevel::CRITICAL
+        };
+        $this->log($level, $errstr . ' in ' . \basename($errfile) . ':' . $errline);
         // }
         return true;
     }
@@ -144,15 +144,16 @@ class Logger implements LoggerInterface
     public function exceptionHandler(Throwable $exception): void
     {
         // if (!$this->stream->isClosed())
-            $this->critical($exception);
+        $this->critical($exception);
         $this->echoException($exception);
     }
 
     public function echoException(Throwable $exception): void
     {
         $e = (string) $exception;
-        if (\headers_sent())
+        if (\headers_sent()) {
             return;
+        }
 
         \http_response_code(500);
         if (PHP_SAPI === 'cli' || PHP_SAPI === 'phpdbg') {
@@ -163,7 +164,6 @@ class Logger implements LoggerInterface
         getOutputBufferStream()->write($message);
     }
 
-
     /**
      * Interpolates context values into the message placeholders.
      */
@@ -173,20 +173,18 @@ class Logger implements LoggerInterface
         $replace = [];
         foreach ($context as $key => $val) {
             // check that the value can be cast to string
-            if (!is_array($val) && (!is_object($val) || method_exists($val, '__toString'))) {
+            if (!\is_array($val) && (!\is_object($val) || \method_exists($val, '__toString'))) {
                 $replace['{' . $key . '}'] = $val;
             }
         }
         // interpolate replacement values into the message and return
-        return strtr($message, $replace);
+        return \strtr($message, $replace);
     }
 
     /**
      * Logs with an arbitrary level.
      *
      * @param LogLevel          $level
-     * @param string|Stringable $message
-     * @param array             $context
      *
      * @throws InvalidArgumentException
      */
@@ -199,8 +197,8 @@ class Logger implements LoggerInterface
             if ($message instanceof Throwable) {
                 $file = $message->getFile();
             } else {
-                $d    = debug_backtrace(DEBUG_BACKTRACE_IGNORE_ARGS);
-                $file = end($d)['file'] ?? 'Not.php'; // todo
+                $d    = \debug_backtrace(DEBUG_BACKTRACE_IGNORE_ARGS);
+                $file = \end($d)['file'] ?? 'Not.php'; // todo
             }
             $message = (string) $message;
             $message = $this->interpolate($message, $context);
@@ -213,18 +211,18 @@ class Logger implements LoggerInterface
 
     private function format(LogLevel $level, string $message, string $file, DateTimeImmutable $time): string
     {
-        $file = ($this->fullName ? dirname($file) : '' ). basename($file, '.php');
+        $file = ($this->fullName ? \dirname($file) : ''). \basename($file, '.php');
         $time = $time->setTimezone($this->timezone)->format($this->dateFormat);
         $info = $this->prefix . "[$time] " . $level->getBracket() . " [$file]" . $this->suffix . ':';
-        if (!$this->stream instanceof File && $this->isatty)
+        if (!$this->stream instanceof File && $this->isatty) {
             $info = $level->getCliColor($info);
+        }
         return  $info . ' ' . $message . PHP_EOL;
     }
 
     /**
-     * Set time format
+     * Set time format.
      *
-     * @param string $format
      */
     public function setDateFormat(string $format): self
     {
@@ -233,7 +231,7 @@ class Logger implements LoggerInterface
     }
 
     /**
-     * Get time format
+     * Get time format.
      */
     public function getDateFormat(): string
     {
@@ -241,7 +239,7 @@ class Logger implements LoggerInterface
     }
 
     /**
-     * Set suffix to be used for the log records
+     * Set suffix to be used for the log records.
      *
      * @param string $suffix The suffix
      */
@@ -252,7 +250,7 @@ class Logger implements LoggerInterface
     }
 
     /**
-     * Get suffix to be used for the log records
+     * Get suffix to be used for the log records.
      */
     public function getSuffix(): string
     {
@@ -260,7 +258,7 @@ class Logger implements LoggerInterface
     }
 
     /**
-     * Set prefix to be used for the log records
+     * Set prefix to be used for the log records.
      *
      * @param string $prefix The prefix
      */
@@ -271,7 +269,7 @@ class Logger implements LoggerInterface
     }
 
     /**
-     * Get prefix to be used for log records
+     * Get prefix to be used for log records.
      */
     public function getPrefix(): string
     {
@@ -285,7 +283,7 @@ class Logger implements LoggerInterface
      */
     public function setTimezone(?DateTimeZone $tz = null): self
     {
-        $this->timezone = $tz ?? new DateTimeZone(date_default_timezone_get());
+        $this->timezone = $tz ?? new DateTimeZone(\date_default_timezone_get());
         return $this;
     }
 
@@ -298,9 +296,8 @@ class Logger implements LoggerInterface
     }
 
     /**
-     * Whether to show full file name
+     * Whether to show full file name.
      *
-     * @param bool $fullName
      */
     public function setFullName(bool $fullName = false): self
     {
@@ -309,7 +306,7 @@ class Logger implements LoggerInterface
     }
 
     /**
-     * Whether to show full file name
+     * Whether to show full file name.
      */
     public function getFullName(): bool
     {
@@ -319,10 +316,7 @@ class Logger implements LoggerInterface
     /**
      * System is unusable.
      *
-     * @param string|Stringable $message
-     * @param array             $context
      *
-     * @return void
      */
     public function emergency(string|Stringable $message, array $context = []): void
     {
@@ -335,10 +329,7 @@ class Logger implements LoggerInterface
      * Example: Entire website down, database unavailable, etc. This should
      * trigger the SMS alerts and wake you up.
      *
-     * @param string|Stringable $message
-     * @param array             $context
      *
-     * @return void
      */
     public function alert(string|Stringable $message, array $context = []): void
     {
@@ -350,10 +341,7 @@ class Logger implements LoggerInterface
      *
      * Example: Application component unavailable, unexpected exception.
      *
-     * @param string|Stringable $message
-     * @param array             $context
      *
-     * @return void
      */
     public function critical(string|Stringable $message, array $context = []): void
     {
@@ -364,10 +352,7 @@ class Logger implements LoggerInterface
      * Runtime errors that do not require immediate action but should typically
      * be logged and monitored.
      *
-     * @param string|Stringable $message
-     * @param array             $context
      *
-     * @return void
      */
     public function error(string|Stringable $message, array $context = []): void
     {
@@ -380,10 +365,7 @@ class Logger implements LoggerInterface
      * Example: Use of deprecated APIs, poor use of an API, undesirable things
      * that are not necessarily wrong.
      *
-     * @param string|Stringable $message
-     * @param array             $context
      *
-     * @return void
      */
     public function warning(string|Stringable $message, array $context = []): void
     {
@@ -393,10 +375,7 @@ class Logger implements LoggerInterface
     /**
      * Normal but significant events.
      *
-     * @param string|Stringable $message
-     * @param array             $context
      *
-     * @return void
      */
     public function notice(string|Stringable $message, array $context = []): void
     {
@@ -408,10 +387,7 @@ class Logger implements LoggerInterface
      *
      * Example: User logs in, SQL logs.
      *
-     * @param string|Stringable $message
-     * @param array             $context
      *
-     * @return void
      */
     public function info(string|Stringable $message, array $context = []): void
     {
@@ -421,10 +397,7 @@ class Logger implements LoggerInterface
     /**
      * Detailed debug information.
      *
-     * @param string|Stringable $message
-     * @param array             $context
      *
-     * @return void
      */
     public function debug(string|Stringable $message, array $context = []): void
     {

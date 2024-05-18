@@ -51,11 +51,12 @@ final class FileLogger extends Logger
     {
         $this->stream->truncate(0);
     }
-    
+
     public function __destruct()
     {
-        if (!empty($this->loggerLoop))
+        if (!empty($this->loggerLoop)) {
             EventLoop::cancel($this->loggerLoop);
+        }
         parent::__destruct();
     }
 }

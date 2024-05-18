@@ -13,8 +13,8 @@ $config = new class extends Amp\CodeStyle\Config {
 };
 
 $config->getFinder()
-    ->in(__DIR__ . '/src')
-    ->in(__DIR__ . '/tests');
+    ->in(__DIR__ . '/src');
+    // ->in(__DIR__ . '/tests');
 
 $cacheDir = getenv('TRAVIS') ? getenv('HOME') . '/.php-cs-fixer' : __DIR__;
 

@@ -14,11 +14,11 @@
 
 namespace Reymon\Logger\Logger;
 
+use Amp\ByteStream\WritableResourceStream;
+use Amp\File\File;
 use DateTimeZone;
 use Reymon\Logger\Logger;
 use Webmozart\Assert\Assert;
-use Amp\File\File;
-use Amp\ByteStream\WritableResourceStream;
 use function Amp\ByteStream\getStdout;
 
 final class EchoLogger extends Logger
