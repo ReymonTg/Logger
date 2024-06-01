@@ -8,4 +8,4 @@ Install the package using composer:
 ```shell
 composer require reymon/logger
 ```
-[] Add toggle for stop logging when readline cli
+- [ ] Add toggle for stop logging when readline cli
