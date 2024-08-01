@@ -1,5 +1,5 @@
 # Logger
-Non-blocking logging for PHP based on Amp & PSR-3
+Non-blocking logging for PHP based on amp & PSR-3
 
 ## Installation
 
